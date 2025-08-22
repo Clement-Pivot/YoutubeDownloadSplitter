@@ -1,0 +1,18 @@
+[Error 32] Le processus ne peut pas accéder au fichier car ce fichier est utilisé par un autre processus: 'c:\\users\\necrof~1\\appdata\\local\\temp\\test.txt'
+Sub shell commands error
+[Error 2] Le fichier spécifié est introuvable
+win
+c:\users\necrof~1\appdata\local\temp
+subprocess.call(['ffmpeg', '-y', '-i', 'c:\\users\\necrof~1\\appdata\\local\\temp\\tmpdxfzov', '-vn', '-f', 'wav', 'c:\\users\\necrof~1\\appdata\\local\\temp\\tmpfrzwjo'])
+Traceback (most recent call last):
+  File "C:\Users\Necrofeitor\DEV\App\Python\YouTubeDownLoader\main.py", line 359, in thread_songer
+    song = AudioSegment.from_file(self.infos['file'],self.infos['codec'])
+  File "C:\Python27\lib\site-packages\pydub\audio_segment.py", line 443, in from_file
+    p = subprocess.Popen(conversion_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  File "C:\Python27\lib\subprocess.py", line 710, in __init__
+    errread, errwrite)
+  File "C:\Python27\lib\subprocess.py", line 958, in _execute_child
+    startupinfo)
+WindowsError: [Error 2] Le fichier spécifié est introuvable
+
+[Error 2] Le fichier spécifié est introuvable

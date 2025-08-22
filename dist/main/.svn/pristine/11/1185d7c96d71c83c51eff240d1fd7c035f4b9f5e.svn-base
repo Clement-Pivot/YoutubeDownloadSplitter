@@ -1,0 +1,548 @@
+#!/usr/bin/python2
+from pydub import AudioSegment
+from pytube import YouTube
+import re
+import os
+import threading
+import time
+import tempfile
+import logging
+from traceback import format_exc
+from kivy.app import App
+from kivy.utils import platform
+from kivy.clock import Clock, mainthread
+from kivy.graphics import Color, Rectangle
+from kivy.uix.label import Label
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.widget import Widget
+from kivy.uix.popup import Popup
+from kivy.uix.dropdown import DropDown
+from kivy.uix.filechooser import FileChooserListView
+
+class RootWidget(FloatLayout):
+
+    stop = threading.Event()
+    l = logging.getLogger("pydub")
+
+    def what_to_do(self):
+        floatContainer = FloatLayout()
+        floatContainer.add_widget(Label(text="What do you want to do ?", size_hint = (1, 1), 
+            pos_hint = {'x' : .0, 'y' : .2}))
+        closeBtn = Button(text="Again !", size_hint = (.5, .2), pos_hint = {'x' : .0, 'y' : .0})
+        closeBtn.bind(on_release=self.page_one)
+        floatContainer.add_widget(closeBtn)
+        quit_btn = Button(text = "Quit !", size_hint = (.5, .2), pos_hint = {'x' : .5, 'y' : .0})
+        quit_btn.bind(on_release=exit)
+        floatContainer.add_widget(quit_btn)
+        self.delete_video_btn = Button(text = "Delete video", size_hint = (.5, .2), pos_hint = {'x' : .5, 'y' : .2})
+        self.delete_video_btn.bind(on_release=self.delete_video)
+        floatContainer.add_widget(self.delete_video_btn)
+        move_video_btn = Button(text = "Move video", size_hint = (.5, .2), pos_hint = {'x' : .0, 'y' : .2})
+        move_video_btn.bind(on_release=self.move_video)
+        floatContainer.add_widget(move_video_btn)
+        self.popup = Popup(title='Finished Popup', content=floatContainer, size_hint=(.6, .5))
+        self.popup.open()
+
+    def move_video(self, btn):
+        contenaire = FloatLayout()
+        self.popupFileChoose = Popup(title="Where save video", content=contenaire, size_hint = (.9, .9))
+        okBtn = Button(text="OK", pos_hint = {'x' : .0, 'y' : .0}, size_hint = (.5,.1))
+        okBtn.bind(on_release = self.okWhereMove)
+        contenaire.add_widget(okBtn)
+        canBtn = Button(text="Cancel", pos_hint = {'x' : .5, 'y' : .0}, size_hint = (.5, .1))
+        canBtn.bind(on_release = self.popupFileChoose.dismiss)
+        contenaire.add_widget(canBtn)
+        self.fileChoose = FileChooserListView(pos_hint = {'x' : .0, 'y' : .11}, size_hint = (1., .9))
+        contenaire.add_widget(self.fileChoose)
+        self.popupFileChoose.open()
+
+    def okWhereMove(self, btn):
+        try:
+            os.rename(os.path.join(os.getcwd(), self.infos['file']), 
+                os.path.join(self.fileChoose.path, self.infos['file']))
+            self.infos['file'] = os.path.join(self.fileChoose.path, self.infos['file'])
+        except Exception as e:
+            self.errorPopup(e)
+            return -1
+        self.popupFileChoose.dismiss()
+
+    def delete_video(self, btn):
+        os.remove(self.infos['file'])
+        self.delete_video_btn.disabled = True
+
+    def errorPopup(self, e):
+        floatContainer = FloatLayout()
+        leng = 0
+        texte = ""
+        for word in str(e).split():
+            if len(word) < 30:
+                leng += len(word)
+                texte += word + " "
+                if (leng > 30):
+                    leng = 0
+                    texte += "\n"
+            else:
+                for letter in word:
+                    leng += 1
+                    texte += letter
+                    if (leng > 30):
+                        leng = 0
+                        texte += "\n"
+        floatContainer.add_widget(Label(text=texte, size_hint = (1, 1), pos_hint = {'x' : .0, 'y' : .0}))
+        closeBtn = Button(text="Got it !", size_hint = (1, .2), pos_hint = {'x' : .0, 'y' : .0})
+        floatContainer.add_widget(closeBtn)
+        popup = Popup(title='Error Popup', content=floatContainer, size_hint=(.6, .5))
+        closeBtn.bind(on_release=popup.dismiss)
+        popup.open()
+
+    def use_file(self, btn):
+        self.pageTwo()
+        self.downloadin.text = "Downloaded"
+        self.infos['downloaded'] = True
+        self.popup_file_exist.dismiss()
+
+    def delete_file(self, btn):
+        os.remove(self.infos['file'])
+        self.ytDownloader(self.downloader)
+        self.popup_file_exist.dismiss()
+
+    def fileExistsPopup(self):
+        float_container = FloatLayout()
+        float_container.add_widget(Label(text = "File already exists.\nDelete or use it ?", size_hint = (1, 1), 
+            pos_hint = {'x' : .0, 'y' : .0}))
+        use_btn = Button(text = "Use it !", size_hint = (.5, .2), pos_hint = {'x' : .5, 'y' : .0})
+        use_btn.bind(on_release = self.use_file)
+        float_container.add_widget(use_btn)
+        delete_btn = Button(text = "Delete !", size_hint = (.5, .2), pos_hint = {'x' : .0, 'y' : .0})
+        delete_btn.bind(on_release = self.delete_file)
+        float_container.add_widget(delete_btn)
+        self.popup_file_exist = Popup(title='File already exist popup', content=float_container, size_hint=(.6, .5))
+        self.popup_file_exist.open()
+
+    def get_local_file(self, btn):
+        contenaire = FloatLayout()
+        self.popup_get_local_file = Popup(title="Where is it", content=contenaire, size_hint = (.9, .9))
+        self.file_choose_local_file = FileChooserListView(pos_hint = {'x' : .0, 'y' : .11}, size_hint = (1., .9))
+        contenaire.add_widget(self.file_choose_local_file)
+        okBtn = Button(text="OK", pos_hint = {'x' : .0, 'y' : .0}, size_hint = (.5,.1))
+        okBtn.bind(on_release = self.ok_get_local_file)
+        contenaire.add_widget(okBtn)
+        canBtn = Button(text="Cancel", pos_hint = {'x' : .5, 'y' : .0}, size_hint = (.5, .1))
+        canBtn.bind(on_release = self.popup_get_local_file.dismiss)
+        contenaire.add_widget(canBtn)
+        self.popup_get_local_file.open()
+
+    def ok_get_local_file(self, btn):
+        if ( len(self.file_choose_local_file.selection) < 1 or not os.path.isfile(self.file_choose_local_file.selection[0])):
+            self.errorPopup("You must choose a file or cancel.")
+            return -1
+        self.infos['file'] = str(self.file_choose_local_file.selection[0])
+        self.infos['path'] = str(self.file_choose_local_file.path)
+        self.popup_get_local_file.dismiss()
+        self.downloadin.text = "Local"
+        self.infos['downloaded'] = True
+        self.pageTwo()
+
+    def ytDownloader(self, btn):
+        if (self.link.text == ""):
+            self.errorPopup("Empty URL.")
+            return -1
+        try:
+            yt = YouTube(self.link.text) # la on se sert de pytube
+        except Exception as e:
+            self.errorPopup(e)
+            return -1
+        if (self.infos['codec'] == ''):
+            self.infos['codec'] = (str(yt.get_videos()[0]).split()[3])[2:5] #on chope l'extention
+            self.infos['resolution'] = str(yt.get_videos()[0]).split()[5]            
+        try:
+            test = open(os.path.join(tempfile.gettempdir(),"test.txt"), "w")
+            test.write("tata")
+            test.close()
+            os.remove(os.path.join(tempfile.gettempdir(),"test.txt"))
+        except Exception as e:
+            self.errorPopup(e)
+        self.infos['path'] = tempfile.gettempdir()
+        self.infos['file'] = os.path.join(self.infos['path'], yt.filename + "." + self.infos['codec'])
+        self.infos['file'] = yt.filename + "." + self.infos['codec']
+        if (os.path.isfile(self.infos['file'])):
+            self.fileExistsPopup()
+            return -1
+        self.downloader.text = 'Downloading ...'
+        video = yt.get(self.infos['codec'], self.infos['resolution']) #on selectionne "cette" video
+        self.start_down_thread(video)    
+
+    def start_down_thread(self, video):
+        downar = threading.Thread(target=self.down_thread, args=(video,))
+        downar.start()
+        calulator = threading.Thread(target=self.calc_thread, args=(video,))
+        calulator.start()
+        self.pageTwo()
+
+    def down_thread(self, yt):
+        try:
+            yt.download(self.infos['path'])
+        except Exception as e:
+            self.errorPopup(e)
+            return -1
+        self.infos['downloaded'] = True
+        self.downloadin.text = 'Downloaded !'
+
+    def calc_thread(self, video):
+        print "Before calc_thread sleep"
+        time.sleep(1)
+        print "After calc_thread sleep"
+
+    def progress_bar(self, progr, poz, sise, color=None, vert=None):
+        if (not hasattr(self, 'displayer')):
+            self.create_progress_bar(progr, poz, sise, color, vert)
+        else:
+            self.update_progress_bar(progr, poz, sise, color, vert)
+
+    def create_progress_bar(self, progr, poz, sise, color=None, vert=None):
+        if not color:
+            Color(.0, .0, .0, .5)
+        else:
+            Color(color)
+        if not vert:
+            vert = False   
+        self.displayer = Widget(pos = (0,0), size = (self.width, self.height)) 
+        self.add_widget(self.displayer)
+        self.update_progress_bar(progr, poz, sise, color, vert)
+
+    def update_progress_bar(self, progr, poz, sise, color, vert):
+        self.displayer.canvas.clear()
+        with self.displayer.canvas:
+            if (len(color) == 4):
+                Color(color[0], color[1], color[2], color[3])
+            else:
+                Color(color[0], color[1], color[2])
+            poz_x = self.width * poz['x']
+            poz_y = self.height * poz['y']
+            siz_x = self.width * sise[0]
+            siz_y = self.height * sise[1]
+            if vert:
+                Rectangle(pos = (poz_x, poz_y), size = ( siz_x, siz_y * progr))
+            else:
+                Rectangle(pos = (poz_x, poz_y), size = (siz_x * progr, siz_y)) 
+
+    def pageTwo(self):
+        self.remove_widget(self.link)
+        self.remove_widget(self.downloader)
+        self.remove_widget(self.checker)
+        self.remove_widget(self.get_local_file_btn)
+        if (hasattr(self, 'drop_down_btn')):
+            self.remove_widget(self.drop_down_btn)
+        self.add_widget(self.downloadin)
+        self.add_widget(self.artist)
+        self.add_widget(self.album)
+        self.add_widget(self.titles)
+        self.add_widget(self.wherePut)
+        self.add_widget(self.songer)
+
+    def page_one(self, btn):
+        self.popup.dismiss()
+        self.add_widget(self.link)
+        self.link.text = ""
+        self.add_widget(self.checker)
+        self.add_widget(self.downloader)
+        self.remove_widget(self.downloadin)
+        self.remove_widget(self.artist)
+        self.artist.text = ""
+        self.remove_widget(self.album)
+        self.album.text = ""
+        self.remove_widget(self.titles)
+        self.titles.text = ""
+        self.remove_widget(self.wherePut)
+        self.remove_widget(self.songer)
+
+    def wherePutSongs(self, btn):
+        contenaire = FloatLayout()
+        self.popupFileChoose = Popup(title="Where save songs", content=contenaire, size_hint = (.9, .9))
+        okBtn = Button(text="OK", pos_hint = {'x' : .0, 'y' : .0}, size_hint = (.5,.1))
+        okBtn.bind(on_release = self.okWhereSongs)
+        contenaire.add_widget(okBtn)
+        canBtn = Button(text="Cancel", pos_hint = {'x' : .5, 'y' : .0}, size_hint = (.5, .1))
+        canBtn.bind(on_release = self.can_where_songs)
+        contenaire.add_widget(canBtn)
+        self.fileChoose = FileChooserListView(pos_hint = {'x' : .0, 'y' : .11}, size_hint = (1., .9))
+        contenaire.add_widget(self.fileChoose)
+        self.popupFileChoose.open()
+
+    def can_where_songs(self, btn):
+        self.wherePut.text = "Where save songs"
+        self.fileChoose.path = "/"
+        self.popupFileChoose.dismiss()
+
+    def okWhereSongs(self, btn):
+        self.wherePut.text = self.fileChoose.path
+        self.infos['where'] = self.fileChoose.path
+        try:
+            test = open(os.path.join(self.infos['where'], 'test.txt'), 'w')
+            test.write("tata")
+            test.close()
+            os.remove(os.path.join(self.infos['where'], 'test.txt'))
+        except Exception as e:
+            self.errorPopup(e)
+            return -1
+        self.popupFileChoose.dismiss()
+        self.arbo_artist_album_titles()
+
+    def arbo_artist_album_titles(self):
+        container = FloatLayout()
+        self.popup_arbo = Popup(title="Arbo type", content=container, size_hint = (.9, .9))
+        ok_btn = Button(text="Yes", pos_hint = {'x' : .0, 'y' : .0}, size_hint = (.5, .1))
+        ok_btn.bind(on_release = self.ok_arbo)
+        container.add_widget(ok_btn)
+        can_btn = Button(text="No", pos_hint = {'x' : .5, 'y' : .0}, size_hint = (.5, .1))
+        can_btn.bind(on_release = self.popup_arbo.dismiss)
+        container.add_widget(can_btn)
+        arbo_label = Label(text = "Create artist folder and album subfolder ?", pos_hint = {'x' : .0, 'y' : .0}, size_hint = (1, 1))
+        container.add_widget(arbo_label)
+        self.popup_arbo.open()
+
+    def ok_arbo(self, btn):
+        self.infos['arbo'] = True
+        self.popup_arbo.dismiss()
+
+    def songMod(self, btn):
+        if (self.infos['where'] == ""):
+            self.errorPopup("You must specify where you want your files.")
+            return -1
+        self.wherePut.disabled = True
+        self.songer.disabled = True
+        self.artist.disabled = True
+        self.album.disabled = True
+        self.titles.disabled = True
+        self.songer.text = 'Waiting download complete'
+        songing = threading.Thread(target=self.start_thread_songer)
+        songing.start()
+    
+    def start_thread_songer(self):
+        while (not self.infos['downloaded']):
+            time.sleep(1)
+        self.songer.text = 'Doing it...'
+        songing = threading.Thread(target=self.thread_songer)
+        songing.start()
+
+    def thread_songer(self):
+        oneSecond = 1000
+        objectif = (self.titles.text.count("\n") + 1) * 2
+        progress_infos = {'pos' : {'x' : .1, 'y' : .05}, 'size': (.8, .85), 'color' : (.6, .6, .6, .4)}
+        self.progress_bar(0., progress_infos['pos'], progress_infos['size'], progress_infos['color'])
+        self.infos['artist'] = self.artist.text
+        self.infos['album'] = self.album.text
+        if (self.infos['arbo']):
+            self.infos['where'] = os.path.join(self.infos['where'], self.infos['artist'])
+            if(not os.path.exists(self.infos['where'])):
+                try:
+                    os.mkdir(self.infos['where'])
+                except Exception as e:
+                    self.errorPopup(e)
+                    return -1
+            self.infos['where'] = os.path.join(self.infos['where'], self.infos['album'])
+            if(not os.path.exists(self.infos['where'])):
+                try:
+                    os.mkdir(self.infos['where'])
+                except Exception as e:
+                    self.errorPopup(e)
+                    return -1
+        try:
+            #error!
+            song = AudioSegment.from_file(self.infos['file'])
+        except Exception as e:
+            # self.errorPopup("ici")
+            self.errorPopup(e)
+            l.warn(format_exc())
+            return -1
+        if(self.titles.text.count("\n") < 2):
+            self.progress_bar((float(1) / objectif), progress_infos['pos'], progress_infos['size'], 
+                                progress_infos['color'])
+            line = self.titles.text
+            times = "0:0"
+            self.infos['titles'].append(re.sub(r"[ ]*[0-9]{0,1}:{0,1}[0-9]{2}:[0-9]{2}[ ]*", "", line))
+            portee = times.count(":")
+            tempSec = 0
+            for j in range(0, portee + 1):
+                tempSec += int(times.split(":")[j]) * (60**(portee - j)) 
+            tempSec = tempSec * oneSecond
+            self.infos['times'].append(tempSec)
+        else:
+            for i in range(self.titles.text.count("\n")+1):
+                self.progress_bar((float(i+1) / objectif), progress_infos['pos'], progress_infos['size'], 
+                    progress_infos['color'])
+                line = self.titles.text.split("\n")[i]
+                times = (re.findall(r"[0-9]{0,1}:{0,1}[0-9]{1,2}[:]{1}[0-9]{2}", line)[0])
+                self.infos['titles'].append(re.sub(r"[ ]*[0-9]{0,1}:{0,1}[0-9]{2}:[0-9]{2}[ ]*", "", line))
+                portee = times.count(":")
+                tempSec = 0
+                for j in range(0, portee + 1):
+                    tempSec += int(times.split(":")[j]) * (60**(portee - j)) 
+                tempSec = tempSec * oneSecond
+                self.infos['times'].append(tempSec)
+        for i in range(len(self.infos['titles'])):
+            self.progress_bar(((float(i+1) + float(len(self.infos['titles'])))/ objectif), progress_infos['pos'], 
+                progress_infos['size'], progress_infos['color'])
+            timeBefore = self.infos['times'][i]
+            if (i < len(self.infos['times']) - 1):
+                timeAfter = self.infos['times'][i + 1]
+            else:
+                timeAfter = song.duration_seconds * oneSecond
+            unite = song[timeBefore:timeAfter]
+            try:
+                unite.export(os.path.join(self.infos['where'], self.infos['titles'][i] + ".mp3"), 
+                    format="mp3", tags={'artist': self.infos['artist'], 'album': self.infos['album'], 
+                    'title': self.infos['titles'][i]})
+            except Exception as e:
+                self.errorPopup(e)
+                return -1
+        self.songer.text = "Finished !"
+        self.songer.disabled = False
+        self.wherePut.disabled = False
+        self.artist.disabled = False
+        self.album.disabled = False
+        self.titles.disabled = False
+        self.displayer.canvas.clear()
+        self.what_to_do()
+
+    def on_enter_yt(self, instance):
+        self.ytDownloader(self.downloader)
+
+    def on_enter_artist(self, instance):
+        self.album.focus = True       
+
+    def on_enter_album(self, instance):
+        self.titles.focus = True
+
+    def check_video(self, btn):
+        if (self.link.text == ""):
+            self.errorPopup("Empty URL.")
+            return -1
+        try:
+            yt = YouTube(self.link.text) # la on se sert de pytube
+        except Exception as e:
+            self.errorPopup(e)
+            return -1
+        liste_codec_dispo = str(yt.get_videos()).split(",") #on chope l'extention
+        liste_complete = []
+        i = 0
+        for code in liste_codec_dispo:
+            if (code.split()[2] == 'Visual'):
+                liste_complete.append( [code.split()[3][2:-1], code.split()[5]])
+            else:
+                liste_complete.append([code.split()[2][2:-1], code.split()[4]])
+            i += 1
+        drop_down = DropDown()
+        for line in liste_complete:
+            btn = Button(text = line[0] + " - " + line[1], size_hint_y = None, height=44)
+            btn.bind(on_release = lambda btn: drop_down.select(btn.text))
+            drop_down.add_widget(btn)
+        drop_down.bind(on_select=self.drop_down_action)
+        self.drop_down_btn = Button(text = "Quality", pos_hint = {'x' : .3, 'y' : .7}, size_hint = (.4, .1))
+        self.drop_down_btn.bind(on_release = drop_down.open)
+        self.add_widget(self.drop_down_btn)
+        self.remove_widget(self.checker)
+
+    def drop_down_action(self, instance, text):
+        self.drop_down_btn.text = text
+        self.infos['codec'] = text.split()[0]
+        self.infos['resolution'] = text.split()[2]
+
+    def link_text_changed(self, instance, text):
+        if (hasattr(self,'drop_down_btn')):
+            self.add_widget(self.checker)
+            self.remove_widget(self.drop_down_btn)
+            del self.drop_down_btn
+
+    def __init__(self, **kwargs):
+        super(RootWidget, self).__init__(**kwargs)
+        self.infos = {'artist': '', 'album': '', 'original_file': '', 'titles': [], 'times': [], 'codec': '', 
+            'resolution': '', 'file': '', 'where' : '', 'downloaded' : False, 'path' : '.', 'arbo' : False}
+
+        self.link = TextInput(multiline = False, pos_hint = {'x' : .1, 'y' : .85}, size_hint = (.8, .1), 
+            hint_text = "YouTube link :")
+        self.link.bind(on_text_validate = self.on_enter_yt)
+        self.link.bind(text=self.link_text_changed)
+        self.add_widget(self.link)
+
+        self.downloader = Button(text='Download', pos_hint = {'x' : .2, 'y' : .15}, size_hint = (.6, .1))
+        self.downloader.bind(on_release = self.ytDownloader)
+        self.add_widget(self.downloader)
+
+        self.get_local_file_btn = Button(text='Local file', pos_hint = {'x' : .2, 'y' : .05}, size_hint = (.6, .1))
+        self.get_local_file_btn.bind(on_release = self.get_local_file)
+        self.add_widget(self.get_local_file_btn)
+
+        self.checker = Button(text='Check', pos_hint = {'x' : .2, 'y' : .6}, size_hint = (.6, .2))
+        self.checker.bind(on_release = self.check_video)
+        self.add_widget(self.checker)
+
+        self.downloadin = Label(text="Downloading ...", pos_hint = {'x' : .45, 'y' : .9}, size_hint = (.1, .1))
+
+        self.artist = TextInput(multiline = False, pos_hint = {'x' : .1, 'y' : .8}, size_hint = (.8, .1), 
+            hint_text = "Artist :")
+        self.artist.bind(on_text_validate = self.on_enter_artist)
+
+        self.album = TextInput(multiline = False, pos_hint = {'x' : .1, 'y' : .7}, size_hint = (.8, .1), 
+            hint_text = "Album :")
+        self.album.bind(on_text_validate = self.on_enter_album)
+
+        self.titles = TextInput(multiline = True, pos_hint = {'x' : .1, 'y' : .25}, size_hint = (.8, .45), 
+            hint_text = "Title h:mm:ss\nTitle mm:ss\nTitle m:ss\nmm:ss Title")
+
+        self.wherePut = Button(text="Where put files ?", pos_hint = {'x' : .1, 'y' : .15}, size_hint = (.8, .1))
+        self.wherePut.bind(on_release = self.wherePutSongs)
+
+        self.songer = Button(text='DO IT !', pos_hint = {'x' : .1, 'y' : .05}, size_hint = (.8, .1))
+        self.songer.bind(on_release = self.songMod)
+#TODO-1 : supp texte par defaut
+        # self.errorPopup("c'est un tres tres tres long long long long texte texte texte texte ... ... ...")
+        self.link.text = "https://www.youtube.com/watch?v=EQja4bK1k6c"
+        self.artist.text = "Panda Dub"
+        self.album.text = "The Lost Ship"
+        self.titles.text = "Milky Way 0:00\nMayd Hubb meets Joe Pilgrim - Tribute to Yabby You (Panda meets Jamma Dim REMIX) 4:28\nFeeling Alive 9:18\nLost Reality 13:52\nPlanet Pillow 18:26\nPurple Trip 22:46\nUnknown Attack 29:02\nHate 33:20\nDanse Macabre 39:58\nDie Brucke 44:20"
+
+class MusicFromYouTube(App):
+#TODO android background download
+    def on_pause(self):
+        return True
+
+    def on_resume(self):
+        return
+
+    def build(self):
+        return RootWidget()
+
+def log_files(pat):
+    for fil in os.listdir(pat):
+        l.debug(pat+" "+fil)
+        if os.path.isdir(os.path.join(pat, fil)):
+            log_files(os.path.join(pat, fil))
+
+if __name__ == '__main__':
+#TODO choisir format de sortie
+    l = logging.getLogger("pydub")
+    l.setLevel(logging.DEBUG)
+    try:
+        l.addHandler(logging.StreamHandler(open('/sdcard/ytdl.log','w')))
+    except:
+        l.addHandler(logging.StreamHandler(open('./ytdl.log','w')))
+    try:
+        t = open(os.path.join(tempfile.gettempdir(),"test.txt"),"w")
+        t.write("Test")
+        t.close
+        os.remove(os.path.join(tempfile.gettempdir(),"test.txt"))
+    except Exception as e:
+        l.debug(str(e))
+    import subprocess
+    try:
+        subprocess.check_output(["ls"])
+        l.debug("Commands ok")
+    except Exception as e:
+        l.debug(str(e))
+    l.debug("list of files in " + os.getcwd() + " :")
+    log_files('.')
+    l.debug("\n")
+    MusicFromYouTube().run()

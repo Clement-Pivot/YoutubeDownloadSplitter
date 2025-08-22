@@ -1,0 +1,7 @@
+[WinError 32] Le processus ne peut pas accéder au fichier car ce fichier est utilisé par un autre processus: 'C:\\Users\\MALFEI~1\\AppData\\Local\\Temp\\test.txt'
+Sub shell commands error
+[WinError 2] Le fichier spécifié est introuvable
+Tempdir not chmodable
+an integer is required (got type str)
+win
+C:\Users\MALFEI~1\AppData\Local\Temp

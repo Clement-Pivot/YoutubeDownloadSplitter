@@ -1,0 +1,5 @@
+Tempdir writable
+Tempdir not chmodable
+an integer is required (got type str)
+linux
+/tmp
